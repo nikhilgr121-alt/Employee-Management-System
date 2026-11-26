@@ -1,0 +1,17 @@
+{
+  "name": "Employee Management System",
+  "short_name": "EMS Admin",
+  "description": "Manage employee records, department analytics, and workforce payroll.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#09152b",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
