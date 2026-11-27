@@ -1,17 +1,10 @@
 const express = require("express");
-const {
-  createEmployee,
-  getAllEmployees,
-  getEmployeeById,
-  updateEmployee,
-  deleteEmployee,
-  bulkDeleteEmployees,
-} = require("../controllers/employeeController");
+const { getAll, getOne, create, update, remove, bulkDelete } = require("../controllers/employeeController");
 
 const router = express.Router();
 
-router.post("/bulk-delete", bulkDeleteEmployees);
-router.route("/").post(createEmployee).get(getAllEmployees);
-router.route("/:id").get(getEmployeeById).put(updateEmployee).delete(deleteEmployee);
+router.post("/bulk-delete", bulkDelete);
+router.route("/").get(getAll).post(create);
+router.route("/:id").get(getOne).put(update).delete(remove);
 
 module.exports = router;

@@ -1,42 +1,20 @@
 import React from "react";
+import { CloseIcon } from "./Icons";
 import AlertBanner from "./AlertBanner";
 import EmployeeForm from "./EmployeeForm";
-import { CloseIcon } from "./Icons";
 
-const EditEmployeeModal = ({
-  employee,
-  onClose,
-  onSave,
-  isSaving,
-  errorMessage,
-  onClearError,
-}) => {
+const EditEmployeeModal = ({ employee, onClose, onSave, isSaving, errorMessage, onClearError }) => {
   if (!employee) return null;
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
-      <div className="modal-card">
-        <div className="modal-header">
-          <h2 id="edit-modal-title" className="modal-title">
-            Update Employee Details
-          </h2>
-          <button
-            type="button"
-            className="modal-close-btn"
-            onClick={onClose}
-            aria-label="Close edit modal"
-            disabled={isSaving}
-          >
-            <CloseIcon />
-          </button>
+    <div className="modal-bg" role="dialog" aria-modal="true">
+      <div className="modal">
+        <div className="modal-head">
+          <span className="modal-title">Edit Employee</span>
+          <button className="modal-x" onClick={onClose} disabled={isSaving}><CloseIcon /></button>
         </div>
-
         <div className="modal-body">
-          <AlertBanner
-            type="error"
-            message={errorMessage}
-            onClose={onClearError}
-          />
+          <AlertBanner type="error" message={errorMessage} onClose={onClearError} />
           <EmployeeForm
             initialValues={employee}
             onSubmit={(payload) => onSave(employee._id, payload)}

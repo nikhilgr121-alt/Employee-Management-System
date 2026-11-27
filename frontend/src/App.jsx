@@ -1,269 +1,175 @@
 import React, { useCallback, useEffect, useState } from "react";
-import AlertBanner from "./components/AlertBanner";
-import {
-  MenuIcon,
-  MoonIcon,
-  RefreshIcon,
-  SearchIcon,
-  SunIcon,
-  UserPlusIcon,
-} from "./components/Icons";
+import { useAuth } from "./context/AuthContext";
 import Sidebar from "./components/Sidebar";
 import UserMenu from "./components/UserMenu";
-import { useAuth } from "./context/AuthContext";
+import AlertBanner from "./components/AlertBanner";
 import LoginPage from "./pages/LoginPage";
-import AddEmployeePage from "./pages/AddEmployeePage";
 import DashboardPage from "./pages/DashboardPage";
 import EmployeesPage from "./pages/EmployeesPage";
-import {
-  bulkDeleteEmployees,
-  checkHealth,
-  createEmployee,
-  deleteEmployee,
-  getEmployees,
-  updateEmployee,
-} from "./services/employeeService";
+import AnalysisPage from "./pages/AnalysisPage";
+import AddEmployeePage from "./pages/AddEmployeePage";
+import { MenuIcon, RefreshIcon, SearchIcon } from "./components/Icons";
+import { checkHealth, getEmployees, createEmployee, updateEmployee, deleteEmployee, bulkDeleteEmployees } from "./services/employeeService";
 
-const PAGE_TITLES = {
-  dashboard: {
-    title: "Dashboard",
-    subtitle: "Overview of workforce statistics and recent registrations",
-  },
-  employees: {
-    title: "Employees",
-    subtitle: "Search, filter, sort, export, and manage all employee records",
-  },
-  "add-employee": {
-    title: "Add Employee",
-    subtitle: "Register a new employee into MongoDB",
-  },
+const TITLES = {
+  dashboard: { title: "Dashboard", sub: "Workforce overview and recent activity" },
+  employees: { title: "Employees", sub: "Search, filter, and manage all employee records" },
+  analysis:  { title: "Analysis",  sub: "Workforce analytics, salary distribution, and insights" },
+  add:       { title: "Add Employee", sub: "Register a new employee into the system" },
 };
 
-function AppShell() {
+export default function App() {
   const { user, isLoading: authLoading } = useAuth();
 
-  const [activePage, setActivePage] = useState("dashboard");
+  const [page, setPage] = useState("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [theme, setTheme] = useState("light");
-
   const [employees, setEmployees] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [dbStatus, setDbStatus] = useState({
-    status: "connecting",
-    name: "employee_management",
-  });
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [dbStatus, setDbStatus] = useState({ status: "connecting", name: "employee_management" });
   const [alert, setAlert] = useState({ type: "", message: "" });
-
   const [quickSearch, setQuickSearch] = useState("");
-  const [directorySearch, setDirectorySearch] = useState("");
-  const [directoryDepartment, setDirectoryDepartment] = useState("All");
+  const [deptFilter, setDeptFilter] = useState("All");
 
-  const showAlert = useCallback((type, message) => {
-    setAlert({ type, message });
-  }, []);
-
-  const clearAlert = useCallback(() => {
-    setAlert({ type: "", message: "" });
-  }, []);
+  const showAlert = useCallback((type, message) => setAlert({ type, message }), []);
+  const clearAlert = useCallback(() => setAlert({ type: "", message: "" }), []);
 
   useEffect(() => {
-    if (!alert.message) return undefined;
-    const timer = setTimeout(() => setAlert({ type: "", message: "" }), 5000);
-    return () => clearTimeout(timer);
+    if (!alert.message) return;
+    const t = setTimeout(() => setAlert({ type: "", message: "" }), 5000);
+    return () => clearTimeout(t);
   }, [alert]);
 
-  const loadData = useCallback(
-    async (silent = false) => {
-      if (!silent) setIsLoading(true);
-      else setIsRefreshing(true);
-      try {
-        const [employeeList, healthInfo] = await Promise.all([
-          getEmployees(),
-          checkHealth().catch(() => null),
-        ]);
-        setEmployees(employeeList);
-        setDbStatus(
-          healthInfo?.database || { status: "connected", name: "employee_management" }
-        );
-      } catch (error) {
-        setDbStatus({ status: "disconnected", name: "employee_management" });
-        showAlert("error", error.message);
-      } finally {
-        setIsLoading(false);
-        setIsRefreshing(false);
-      }
-    },
-    [showAlert]
-  );
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    try {
+      const [data, health] = await Promise.all([
+        getEmployees(),
+        checkHealth().catch(() => null),
+      ]);
+      setEmployees(data);
+      setDbStatus(health?.database || { status: "connected", name: "employee_management" });
+    } catch (err) {
+      setDbStatus({ status: "disconnected", name: "employee_management" });
+      showAlert("error", err.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [showAlert]);
 
-  useEffect(() => {
-    if (user) loadData(false);
-  }, [user, loadData]);
+  useEffect(() => { if (user) loadData(false); }, [user, loadData]);
 
-  // Show loading spinner while checking auth token
   if (authLoading) {
     return (
-      <div className="auth-loading-screen">
-        <div className="auth-loading-spinner" />
-        <p>Loading Employee Management System...</p>
+      <div className="page-loader">
+        <div className="big-spinner" />
+        <p style={{ color: "#64748b", fontWeight: 500 }}>Loading...</p>
       </div>
     );
   }
 
-  // Show Login Page if not authenticated
-  if (!user) {
-    return <LoginPage />;
-  }
+  if (!user) return <LoginPage />;
 
-  const handleNavigate = (page) => {
+  const navigate = (p) => {
     clearAlert();
-    if (page !== "employees") {
-      setDirectoryDepartment("All");
-      setDirectorySearch("");
-    }
-    setActivePage(page);
+    if (p !== "employees") { setDeptFilter("All"); setQuickSearch(""); }
+    setPage(p);
   };
 
-  const handleFilterDepartmentFromDashboard = (department) => {
+  const filterByDept = (dept) => {
     clearAlert();
-    setDirectorySearch("");
-    setDirectoryDepartment(department);
-    setActivePage("employees");
+    setDeptFilter(dept);
+    setQuickSearch("");
+    setPage("employees");
   };
 
-  const handleQuickSearchSubmit = (e) => {
+  const handleSearch = (e) => {
     e.preventDefault();
     clearAlert();
-    setDirectoryDepartment("All");
-    setDirectorySearch(quickSearch);
-    setActivePage("employees");
+    setDeptFilter("All");
+    setPage("employees");
   };
 
-  const handleCreateEmployee = async (payload) => {
+  const handleCreate = async (payload) => {
     try {
-      const response = await createEmployee(payload);
-      setEmployees((prev) => [response.data, ...prev]);
-      showAlert("success", response.message || "Employee added successfully.");
+      const res = await createEmployee(payload);
+      setEmployees((p) => [res.data, ...p]);
+      showAlert("success", res.message || "Employee added.");
       return { success: true };
-    } catch (error) {
-      showAlert("error", error.message);
-      return { success: false, error: error.message };
+    } catch (err) {
+      showAlert("error", err.message);
+      return { success: false, error: err.message };
     }
   };
 
-  const handleUpdateEmployee = async (id, payload) => {
+  const handleUpdate = async (id, payload) => {
     try {
-      const response = await updateEmployee(id, payload);
-      setEmployees((prev) =>
-        prev.map((emp) => (emp._id === id ? response.data : emp))
-      );
-      showAlert("success", response.message || "Employee updated successfully.");
+      const res = await updateEmployee(id, payload);
+      setEmployees((p) => p.map((e) => (e._id === id ? res.data : e)));
+      showAlert("success", res.message || "Employee updated.");
       return { success: true };
-    } catch (error) {
-      return { success: false, error: error.message };
+    } catch (err) {
+      showAlert("error", err.message);
+      return { success: false, error: err.message };
     }
   };
 
-  const handleDeleteEmployee = async (id) => {
+  const handleDelete = async (id) => {
     try {
-      const response = await deleteEmployee(id);
-      setEmployees((prev) => prev.filter((emp) => emp._id !== id));
-      showAlert("success", response.message || "Employee deleted successfully.");
+      const res = await deleteEmployee(id);
+      setEmployees((p) => p.filter((e) => e._id !== id));
+      showAlert("success", res.message || "Employee deleted.");
       return { success: true };
-    } catch (error) {
-      showAlert("error", error.message);
-      return { success: false, error: error.message };
+    } catch (err) {
+      showAlert("error", err.message);
+      return { success: false, error: err.message };
     }
   };
 
-  const handleBulkDeleteEmployees = async (ids) => {
+  const handleBulkDelete = async (ids) => {
     try {
-      const response = await bulkDeleteEmployees(ids);
+      const res = await bulkDeleteEmployees(ids);
       const idSet = new Set(ids);
-      setEmployees((prev) => prev.filter((emp) => !idSet.has(emp._id)));
-      showAlert("success", response.message || "Selected employees deleted successfully.");
+      setEmployees((p) => p.filter((e) => !idSet.has(e._id)));
+      showAlert("success", res.message || "Employees deleted.");
       return { success: true };
-    } catch (error) {
-      showAlert("error", error.message);
-      return { success: false, error: error.message };
+    } catch (err) {
+      showAlert("error", err.message);
+      return { success: false, error: err.message };
     }
   };
 
-  const currentHeader = PAGE_TITLES[activePage] || PAGE_TITLES.dashboard;
+  const { title, sub } = TITLES[page] || TITLES.dashboard;
 
   return (
-    <div className="app-layout" data-theme={theme}>
-      <Sidebar
-        activePage={activePage}
-        onNavigate={handleNavigate}
-        isOpen={sidebarOpen}
-        onClose={() => setSidebarOpen(false)}
-        employeeCount={employees.length}
-        dbStatus={dbStatus}
-      />
+    <div className="app-layout">
+      <Sidebar active={page} onNav={navigate} isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} empCount={employees.length} dbStatus={dbStatus} />
 
       <div className="main-wrapper">
         <header className="topbar">
-          <div className="topbar-left">
-            <button
-              type="button"
-              className="menu-toggle-btn"
-              onClick={() => setSidebarOpen(true)}
-              aria-label="Open navigation menu"
-            >
-              <MenuIcon />
-            </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button className="menu-btn" onClick={() => setSidebarOpen(true)}><MenuIcon /></button>
             <div>
-              <h2 className="page-heading">{currentHeader.title}</h2>
-              <p className="page-subheading">{currentHeader.subtitle}</p>
+              <div className="page-title">{title}</div>
+              <div className="page-sub">{sub}</div>
             </div>
           </div>
 
-          <div className="topbar-actions">
-            <form className="topbar-search" onSubmit={handleQuickSearchSubmit}>
-              <span className="topbar-search-icon">
-                <SearchIcon />
-              </span>
-              <input
-                type="text"
-                className="topbar-search-input"
-                placeholder="Quick search ID or name..."
-                value={quickSearch}
-                onChange={(e) => setQuickSearch(e.target.value)}
-                aria-label="Quick search employees"
-              />
+          <div className="topbar-right">
+            <form className="search-wrap" onSubmit={handleSearch}>
+              <span className="search-icon"><SearchIcon /></span>
+              <input placeholder="Quick search..." value={quickSearch} onChange={(e) => setQuickSearch(e.target.value)} />
             </form>
 
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => loadData(true)}
-              title="Refresh data from MongoDB"
-              aria-label="Refresh"
-              disabled={isRefreshing}
-            >
-              <RefreshIcon spinning={isRefreshing} />
+            <button className="icon-btn" onClick={() => loadData(true)} title="Refresh" disabled={refreshing}>
+              <RefreshIcon spin={refreshing} />
             </button>
 
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setTheme((prev) => (prev === "light" ? "dark" : "light"))}
-              title={`Switch to ${theme === "light" ? "dark" : "light"} theme`}
-              aria-label="Toggle theme"
-            >
-              {theme === "light" ? <MoonIcon /> : <SunIcon />}
-            </button>
-
-            {activePage !== "add-employee" && (
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => handleNavigate("add-employee")}
-              >
-                <UserPlusIcon />
-                <span className="btn-text-hide">Add Employee</span>
+            {page !== "add" && (
+              <button className="btn btn-primary" onClick={() => navigate("add")}>
+                + <span className="btn-txt">Add Employee</span>
               </button>
             )}
 
@@ -274,41 +180,23 @@ function AppShell() {
         <main className="main-content">
           <AlertBanner type={alert.type} message={alert.message} onClose={clearAlert} />
 
-          {activePage === "dashboard" && (
-            <DashboardPage
-              employees={employees}
-              isLoading={isLoading}
-              onNavigate={handleNavigate}
-              onFilterDepartment={handleFilterDepartmentFromDashboard}
-              onUpdateEmployee={handleUpdateEmployee}
-              onDeleteEmployee={handleDeleteEmployee}
-            />
+          {page === "dashboard" && (
+            <DashboardPage employees={employees} isLoading={loading} onNavigate={navigate}
+              onFilterDept={filterByDept} onUpdate={handleUpdate} onDelete={handleDelete} />
           )}
-
-          {activePage === "employees" && (
-            <EmployeesPage
-              employees={employees}
-              isLoading={isLoading}
-              onNavigate={handleNavigate}
-              onUpdateEmployee={handleUpdateEmployee}
-              onDeleteEmployee={handleDeleteEmployee}
-              onBulkDeleteEmployees={handleBulkDeleteEmployees}
-              initialSearch={directorySearch}
-              initialDepartment={directoryDepartment}
-            />
+          {page === "employees" && (
+            <EmployeesPage employees={employees} isLoading={loading} onNavigate={navigate}
+              onUpdate={handleUpdate} onDelete={handleDelete} onBulkDelete={handleBulkDelete}
+              initSearch={quickSearch} initDept={deptFilter} />
           )}
-
-          {activePage === "add-employee" && (
-            <AddEmployeePage
-              employees={employees}
-              onCreateEmployee={handleCreateEmployee}
-              onNavigate={handleNavigate}
-            />
+          {page === "analysis" && (
+            <AnalysisPage employees={employees} isLoading={loading} />
+          )}
+          {page === "add" && (
+            <AddEmployeePage employees={employees} onCreate={handleCreate} onNavigate={navigate} />
           )}
         </main>
       </div>
     </div>
   );
 }
-
-export default AppShell;

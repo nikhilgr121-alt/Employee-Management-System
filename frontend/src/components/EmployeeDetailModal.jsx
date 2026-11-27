@@ -1,112 +1,47 @@
 import React from "react";
-import {
-  formatDate,
-  formatSalary,
-  getDepartmentColor,
-  getInitials,
-} from "../assets/constants";
-import { CloseIcon, DeleteIcon, EditIcon } from "./Icons";
+import { getDeptColor, fmtSalary, fmtDate, getInitials } from "../utils/helpers";
+import { CloseIcon, EditIcon, TrashIcon } from "./Icons";
 
 const EmployeeDetailModal = ({ employee, onClose, onEdit, onDelete }) => {
   if (!employee) return null;
-
-  const deptColor = getDepartmentColor(employee.department);
-  const monthlySalary = Number(employee.salary) || 0;
-  const annualSalary = monthlySalary * 12;
+  const c = getDeptColor(employee.department);
+  const monthly = Number(employee.salary) || 0;
 
   return (
-    <div
-      className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="detail-modal-title"
-    >
-      <div className="modal-card">
-        <div className="modal-header">
-          <h2 id="detail-modal-title" className="modal-title">
-            Employee Profile
-          </h2>
-          <button
-            type="button"
-            className="modal-close-btn"
-            onClick={onClose}
-            aria-label="Close employee profile"
-          >
-            <CloseIcon />
-          </button>
+    <div className="modal-bg" role="dialog" aria-modal="true">
+      <div className="modal">
+        <div className="modal-head">
+          <span className="modal-title">Employee Profile</span>
+          <button className="modal-x" onClick={onClose}><CloseIcon /></button>
         </div>
-
         <div className="modal-body">
           <div className="profile-hero">
-            <div
-              className="profile-avatar-lg"
-              style={{ backgroundColor: deptColor.bar }}
-            >
-              {getInitials(employee.employeeName)}
-            </div>
+            <div className="avatar-lg" style={{ backgroundColor: c.bar }}>{getInitials(employee.employeeName)}</div>
             <div>
-              <span className="emp-id-pill">{employee.employeeId}</span>
-              <h3 className="profile-name">{employee.employeeName}</h3>
-              <p className="profile-designation">{employee.designation}</p>
+              <span className="id-pill">{employee.employeeId}</span>
+              <div className="profile-name">{employee.employeeName}</div>
+              <div className="profile-desig">{employee.designation}</div>
             </div>
-            <span
-              className="dept-badge profile-dept-badge"
-              style={{ backgroundColor: deptColor.bg, color: deptColor.text }}
-            >
-              {employee.department}
-            </span>
+            <span className="dept-badge dept-ml" style={{ backgroundColor: c.bg, color: c.text }}>{employee.department}</span>
           </div>
 
-          <div className="profile-details-grid">
-            <div className="detail-tile">
-              <span className="detail-label">Monthly Salary</span>
-              <strong className="detail-value">{formatSalary(monthlySalary)}</strong>
-            </div>
-            <div className="detail-tile">
-              <span className="detail-label">Estimated Annual</span>
-              <strong className="detail-value">{formatSalary(annualSalary)}</strong>
-            </div>
-            <div className="detail-tile">
-              <span className="detail-label">Joined / Added</span>
-              <strong className="detail-value">
-                {formatDate(employee.createdAt)}
-              </strong>
-            </div>
-            <div className="detail-tile">
-              <span className="detail-label">Last Updated</span>
-              <strong className="detail-value">
-                {formatDate(employee.updatedAt)}
-              </strong>
-            </div>
+          <div className="detail-grid">
+            <div className="detail-tile"><div className="detail-lbl">Monthly Salary</div><div className="detail-val">{fmtSalary(monthly)}</div></div>
+            <div className="detail-tile"><div className="detail-lbl">Annual Salary</div><div className="detail-val">{fmtSalary(monthly * 12)}</div></div>
+            <div className="detail-tile"><div className="detail-lbl">Added On</div><div className="detail-val">{fmtDate(employee.createdAt)}</div></div>
+            <div className="detail-tile"><div className="detail-lbl">Last Updated</div><div className="detail-val">{fmtDate(employee.updatedAt)}</div></div>
           </div>
 
-          <div className="mongo-meta-box">
-            <span className="detail-label">MongoDB Document ID:</span>{" "}
-            <code>{employee._id}</code>
+          <div className="mongo-box">
+            <strong>MongoDB ID:</strong> <code>{employee._id}</code>
           </div>
 
-          <div className="form-actions" style={{ marginTop: 18 }}>
-            <button
-              type="button"
-              className="btn btn-delete"
-              onClick={() => {
-                onClose();
-                onDelete(employee);
-              }}
-            >
-              <DeleteIcon />
-              <span>Delete</span>
+          <div className="form-actions" style={{ marginTop: 16 }}>
+            <button className="btn btn-del" onClick={() => { onClose(); onDelete(employee); }}>
+              <TrashIcon /> Delete
             </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => {
-                onClose();
-                onEdit(employee);
-              }}
-            >
-              <EditIcon />
-              <span>Edit Details</span>
+            <button className="btn btn-primary" onClick={() => { onClose(); onEdit(employee); }}>
+              <EditIcon /> Edit
             </button>
           </div>
         </div>

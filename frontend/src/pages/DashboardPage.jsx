@@ -1,288 +1,160 @@
 import React, { useState } from "react";
-import {
-  DEPARTMENTS,
-  exportEmployeesToCSV,
-  formatSalary,
-  getDepartmentColor,
-  getInitials,
-} from "../assets/constants";
-import DeleteConfirmModal from "../components/DeleteConfirmModal";
-import EditEmployeeModal from "../components/EditEmployeeModal";
+import { DEPARTMENTS, getDeptColor, fmtSalary, getInitials } from "../utils/helpers";
+import { UsersIcon, BuildingIcon, TrendIcon, DollarIcon, AddUserIcon, DownloadIcon } from "../components/Icons";
+import { exportCSV } from "../utils/helpers";
 import EmployeeDetailModal from "../components/EmployeeDetailModal";
-import {
-  BuildingIcon,
-  DollarIcon,
-  DownloadIcon,
-  TrendIcon,
-  UserPlusIcon,
-  UsersIcon,
-} from "../components/Icons";
-import StatCard from "../components/StatCard";
+import EditEmployeeModal from "../components/EditEmployeeModal";
+import DeleteConfirmModal from "../components/DeleteConfirmModal";
 
-const DashboardPage = ({
-  employees,
-  isLoading,
-  onNavigate,
-  onFilterDepartment,
-  onUpdateEmployee,
-  onDeleteEmployee,
-}) => {
-  const [viewingEmployee, setViewingEmployee] = useState(null);
-  const [editingEmployee, setEditingEmployee] = useState(null);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [editError, setEditError] = useState("");
-  const [deletingEmployee, setDeletingEmployee] = useState(null);
+const StatCard = ({ label, value, sub, icon, color }) => (
+  <div className={`stat-card ${color}`}>
+    <div className="stat-head">
+      <div>
+        <div className="stat-label">{label}</div>
+        <div className="stat-value">{value}</div>
+      </div>
+      <div className="stat-icon">{icon}</div>
+    </div>
+    {sub && <div className="stat-desc">{sub}</div>}
+  </div>
+);
+
+const DashboardPage = ({ employees, isLoading, onNavigate, onFilterDept, onUpdate, onDelete }) => {
+  const [viewEmp, setViewEmp] = useState(null);
+  const [editEmp, setEditEmp] = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editErr, setEditErr] = useState("");
+  const [delEmp, setDelEmp] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleSaveEdit = async (id, payload) => {
-    setIsSavingEdit(true);
-    setEditError("");
-    const result = await onUpdateEmployee(id, payload);
-    setIsSavingEdit(false);
-    if (result.success) {
-      setEditingEmployee(null);
-      return true;
-    }
-    setEditError(result.error);
-    return false;
-  };
+  const total = employees.length;
+  const salaries = employees.map((e) => Number(e.salary) || 0);
+  const payroll = salaries.reduce((s, v) => s + v, 0);
+  const avg = total > 0 ? payroll / total : 0;
+  const highest = salaries.length ? Math.max(...salaries) : 0;
+  const lowest = salaries.length ? Math.min(...salaries) : 0;
 
-  const handleConfirmDelete = async (id) => {
-    setIsDeleting(true);
-    const result = await onDeleteEmployee(id);
-    setIsDeleting(false);
-    if (result.success) {
-      setDeletingEmployee(null);
-    }
-  };
-
-  const totalEmployees = employees.length;
-  const salaries = employees.map((emp) => Number(emp.salary) || 0);
-  const totalPayroll = salaries.reduce((sum, val) => sum + val, 0);
-  const averageSalary = totalEmployees > 0 ? totalPayroll / totalEmployees : 0;
-  const highestSalary = salaries.length > 0 ? Math.max(...salaries) : 0;
-  const lowestSalary = salaries.length > 0 ? Math.min(...salaries) : 0;
-
-  // Build department summary (count + total payroll)
+  // Department breakdown
   const deptMap = {};
-  DEPARTMENTS.forEach((dept) => {
-    deptMap[dept] = { count: 0, payroll: 0 };
+  DEPARTMENTS.forEach((d) => { deptMap[d] = { count: 0, payroll: 0 }; });
+  employees.forEach((e) => {
+    const d = e.department || "Other";
+    if (!deptMap[d]) deptMap[d] = { count: 0, payroll: 0 };
+    deptMap[d].count++;
+    deptMap[d].payroll += Number(e.salary) || 0;
   });
-  employees.forEach((emp) => {
-    const dept = emp.department || "Other";
-    if (!deptMap[dept]) deptMap[dept] = { count: 0, payroll: 0 };
-    deptMap[dept].count += 1;
-    deptMap[dept].payroll += Number(emp.salary) || 0;
-  });
+  const deptEntries = Object.entries(deptMap).sort((a, b) => b[1].count - a[1].count);
+  const activeDepts = deptEntries.filter(([, s]) => s.count > 0).length;
+  const recent = employees.slice(0, 5);
 
-  const departmentEntries = Object.entries(deptMap).sort(
-    (a, b) => b[1].count - a[1].count
-  );
-  const activeDepartmentCount = departmentEntries.filter(
-    ([, stats]) => stats.count > 0
-  ).length;
+  // Donut chart
+  const R = 54, C = 2 * Math.PI * R;
+  let cum = 0;
+  const segments = total > 0
+    ? deptEntries.filter(([, s]) => s.count > 0).map(([dept, stats]) => {
+        const frac = stats.count / total;
+        const seg = { dept, color: getDeptColor(dept).bar, dash: `${frac * C} ${C}`, offset: -cum * C };
+        cum += frac;
+        return seg;
+      })
+    : [];
 
-  const recentEmployees = employees.slice(0, 5);
+  const handleSaveEdit = async (id, payload) => {
+    setIsSaving(true); setEditErr("");
+    const r = await onUpdate(id, payload);
+    setIsSaving(false);
+    if (r.success) { setEditEmp(null); return true; }
+    setEditErr(r.error); return false;
+  };
 
-  // Build SVG donut chart segments
-  const radius = 56;
-  const circumference = 2 * Math.PI * radius;
-  let cumulativeFraction = 0;
-  const donutSegments =
-    totalEmployees > 0
-      ? departmentEntries
-          .filter(([, stats]) => stats.count > 0)
-          .map(([department, stats]) => {
-            const fraction = stats.count / totalEmployees;
-            const dashLength = fraction * circumference;
-            const dashOffset = -cumulativeFraction * circumference;
-            cumulativeFraction += fraction;
-            return {
-              department,
-              count: stats.count,
-              color: getDepartmentColor(department).bar,
-              dashArray: `${dashLength} ${circumference}`,
-              dashOffset,
-            };
-          })
-      : [];
+  const handleConfirmDel = async (id) => {
+    setIsDeleting(true);
+    const r = await onDelete(id);
+    setIsDeleting(false);
+    if (r.success) setDelEmp(null);
+  };
 
-  if (isLoading) {
-    return (
-      <div className="card">
-        <div className="loading-state">Loading dashboard overview...</div>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="card"><div className="loading-state">Loading dashboard...</div></div>;
 
   return (
-    <div className="dashboard-stack">
-      {/* Hero Banner */}
+    <div className="dash-stack">
+      {/* Hero */}
       <section className="hero-banner">
         <div>
           <span className="hero-pill">Workforce Overview</span>
-          <h2 className="hero-title">Welcome to Employee Management System</h2>
-          <p className="hero-subtitle">
-            Managing <strong>{totalEmployees}</strong> active employee{" "}
-            {totalEmployees === 1 ? "record" : "records"} across{" "}
-            <strong>{activeDepartmentCount}</strong> departments with an
-            estimated annual payroll of{" "}
-            <strong>{formatSalary(totalPayroll * 12)}</strong>.
+          <h2 className="hero-title">Employee Management System</h2>
+          <p className="hero-desc">
+            Managing <strong>{total}</strong> employee{total !== 1 ? "s" : ""} across{" "}
+            <strong>{activeDepts}</strong> departments · Annual payroll{" "}
+            <strong>{fmtSalary(payroll * 12)}</strong>
           </p>
         </div>
-
-        <div className="hero-actions">
-          <button
-            type="button"
-            className="btn btn-hero-light"
-            onClick={() => exportEmployeesToCSV(employees)}
-            disabled={employees.length === 0}
-          >
-            <DownloadIcon />
-            <span>Export CSV</span>
+        <div className="hero-btns">
+          <button className="btn btn-hero-outline" onClick={() => exportCSV(employees)} disabled={!total}>
+            <DownloadIcon /> <span className="btn-txt">Export CSV</span>
           </button>
-          <button
-            type="button"
-            className="btn btn-hero-primary"
-            onClick={() => onNavigate("add-employee")}
-          >
-            <UserPlusIcon />
-            <span>Add Employee</span>
+          <button className="btn btn-hero-white" onClick={() => onNavigate("add")}>
+            <AddUserIcon /> <span className="btn-txt">Add Employee</span>
           </button>
         </div>
       </section>
 
       {/* Stat Cards */}
       <div className="stats-grid">
-        <StatCard
-          title="Total Employees"
-          value={totalEmployees}
-          subtitle="Stored permanently in MongoDB"
-          icon={<UsersIcon />}
-          accent="navy"
-        />
-        <StatCard
-          title="Active Departments"
-          value={activeDepartmentCount}
-          subtitle={`Out of ${departmentEntries.length} tracked departments`}
-          icon={<BuildingIcon />}
-          accent="blue"
-        />
-        <StatCard
-          title="Average Salary"
-          value={formatSalary(averageSalary)}
-          subtitle={
-            totalEmployees > 0
-              ? `Range: ${formatSalary(lowestSalary)} – ${formatSalary(highestSalary)}`
-              : "No salary records yet"
-          }
-          icon={<TrendIcon />}
-          accent="green"
-        />
-        <StatCard
-          title="Monthly Payroll"
-          value={formatSalary(totalPayroll)}
-          subtitle={`Annual: ${formatSalary(totalPayroll * 12)}`}
-          icon={<DollarIcon />}
-          accent="amber"
-        />
+        <StatCard label="Total Employees" value={total} sub="Stored in MongoDB" icon={<UsersIcon />} color="navy" />
+        <StatCard label="Active Departments" value={activeDepts} sub={`Out of ${deptEntries.length} tracked`} icon={<BuildingIcon />} color="blue" />
+        <StatCard label="Average Salary" value={fmtSalary(avg)} sub={total ? `Range: ${fmtSalary(lowest)} – ${fmtSalary(highest)}` : "No data"} icon={<TrendIcon />} color="green" />
+        <StatCard label="Monthly Payroll" value={fmtSalary(payroll)} sub={`Annual: ${fmtSalary(payroll * 12)}`} icon={<DollarIcon />} color="amber" />
       </div>
 
-      <div className="dashboard-grid">
-        {/* Department Analytics Card */}
+      <div className="dash-grid">
+        {/* Department Breakdown */}
         <section className="card">
           <div className="card-header">
             <div>
-              <h2 className="card-title">Department Breakdown</h2>
-              <p className="card-subtitle">
-                Click any department to view its employees
-              </p>
+              <div className="card-title">Department Breakdown</div>
+              <div className="card-sub">Click a department to view its employees</div>
             </div>
           </div>
           <div className="card-body">
-            {totalEmployees > 0 && (
-              <div className="donut-wrapper">
-                <svg width="150" height="150" viewBox="0 0 150 150" className="donut-svg">
-                  <circle
-                    cx="75"
-                    cy="75"
-                    r={radius}
-                    fill="none"
-                    stroke="var(--grey-200)"
-                    strokeWidth="18"
-                  />
-                  {donutSegments.map((seg) => (
-                    <circle
-                      key={seg.department}
-                      cx="75"
-                      cy="75"
-                      r={radius}
-                      fill="none"
-                      stroke={seg.color}
-                      strokeWidth="18"
-                      strokeDasharray={seg.dashArray}
-                      strokeDashoffset={seg.dashOffset}
-                      transform="rotate(-90 75 75)"
-                    />
+            {total > 0 && (
+              <div className="donut-wrap">
+                <svg width="140" height="140" viewBox="0 0 140 140">
+                  <circle cx="70" cy="70" r={R} fill="none" stroke="#e2e8f0" strokeWidth="16" />
+                  {segments.map((s) => (
+                    <circle key={s.dept} cx="70" cy="70" r={R} fill="none" stroke={s.color}
+                      strokeWidth="16" strokeDasharray={s.dash} strokeDashoffset={s.offset}
+                      transform="rotate(-90 70 70)" />
                   ))}
-                  <text x="75" y="71" textAnchor="middle" className="donut-center-num">
-                    {totalEmployees}
-                  </text>
-                  <text x="75" y="90" textAnchor="middle" className="donut-center-label">
-                    Staff
-                  </text>
+                  <text x="70" y="66" textAnchor="middle" className="donut-num">{total}</text>
+                  <text x="70" y="82" textAnchor="middle" className="donut-lbl">Staff</text>
                 </svg>
-
-                <div className="donut-legend">
-                  {donutSegments.map((seg) => (
-                    <div key={seg.department} className="legend-item">
-                      <span
-                        className="legend-dot"
-                        style={{ backgroundColor: seg.color }}
-                      />
-                      <span className="legend-name">{seg.department}</span>
-                      <span className="legend-count">{seg.count}</span>
+                <div className="legend">
+                  {segments.map((s) => (
+                    <div key={s.dept} className="legend-row">
+                      <span className="legend-dot" style={{ backgroundColor: s.color }} />
+                      <span className="legend-name">{s.dept}</span>
+                      <span className="legend-cnt">{deptMap[s.dept].count}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
-
             <div className="dept-list">
-              {departmentEntries.map(([department, stats]) => {
-                const percentage =
-                  totalEmployees > 0
-                    ? Math.round((stats.count / totalEmployees) * 100)
-                    : 0;
-                const deptColor = getDepartmentColor(department);
-
+              {deptEntries.map(([dept, stats]) => {
+                const pct = total > 0 ? Math.round((stats.count / total) * 100) : 0;
+                const c = getDeptColor(dept);
                 return (
-                  <button
-                    key={department}
-                    type="button"
-                    className="dept-item-btn"
-                    onClick={() => onFilterDepartment(department)}
-                    title={`View ${department} employees`}
-                  >
-                    <div className="dept-item-top">
-                      <span className="dept-name">{department}</span>
-                      <span className="dept-meta">
-                        <span className="dept-payroll">
-                          {formatSalary(stats.payroll)}/mo
-                        </span>
-                        <span className="dept-count">
-                          {stats.count} ({percentage}%)
-                        </span>
-                      </span>
+                  <button key={dept} className="dept-btn" onClick={() => onFilterDept(dept)}>
+                    <div className="dept-top">
+                      <span className="dept-nm">{dept}</span>
+                      <div className="dept-info">
+                        <span className="dept-pay">{fmtSalary(stats.payroll)}/mo</span>
+                        <span className="dept-cnt">{stats.count} ({pct}%)</span>
+                      </div>
                     </div>
-                    <div className="dept-bar-track">
-                      <div
-                        className="dept-bar-fill"
-                        style={{
-                          width: `${percentage}%`,
-                          background: deptColor.bar,
-                        }}
-                      />
+                    <div className="dept-track">
+                      <div className="dept-fill" style={{ width: `${pct}%`, background: c.bar }} />
                     </div>
                   </button>
                 );
@@ -291,94 +163,47 @@ const DashboardPage = ({
           </div>
         </section>
 
-        {/* Recently Added Employees */}
+        {/* Recently Added */}
         <section className="card">
           <div className="card-header">
             <div>
-              <h2 className="card-title">Recently Added Employees</h2>
-              <p className="card-subtitle">
-                Latest {recentEmployees.length} employee registrations
-              </p>
+              <div className="card-title">Recently Added</div>
+              <div className="card-sub">Latest {recent.length} registrations</div>
             </div>
-            <button
-              type="button"
-              className="btn btn-sm btn-secondary"
-              onClick={() => onNavigate("employees")}
-            >
-              View Directory
-            </button>
+            <button className="btn btn-sm btn-secondary" onClick={() => onNavigate("employees")}>View All</button>
           </div>
 
-          {recentEmployees.length === 0 ? (
+          {recent.length === 0 ? (
             <div className="empty-state">
-              <h4>No Employees Added Yet</h4>
-              <p style={{ marginBottom: "14px" }}>
-                Add your first employee to see live dashboard analytics.
-              </p>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={() => onNavigate("add-employee")}
-              >
-                <UserPlusIcon />
-                <span>Add Employee</span>
+              <h4>No Employees Yet</h4>
+              <p>Add your first employee to see dashboard analytics.</p>
+              <button className="btn btn-primary" onClick={() => onNavigate("add")}>
+                <AddUserIcon /> Add Employee
               </button>
             </div>
           ) : (
-            <div className="table-responsive">
-              <table className="employee-table">
+            <div className="recent-table-wrap">
+              <table className="recent-table">
                 <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Employee</th>
-                    <th>Department</th>
-                    <th>Salary</th>
-                  </tr>
+                  <tr><th>ID</th><th>Name</th><th>Department</th><th>Salary</th></tr>
                 </thead>
                 <tbody>
-                  {recentEmployees.map((emp) => {
-                    const deptColor = getDepartmentColor(emp.department);
+                  {recent.map((emp) => {
+                    const c = getDeptColor(emp.department);
                     return (
                       <tr key={emp._id}>
+                        <td><span className="id-pill">{emp.employeeId}</span></td>
                         <td>
-                          <span className="emp-id-pill">{emp.employeeId}</span>
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="emp-name-link"
-                            onClick={() => setViewingEmployee(emp)}
-                          >
-                            <span
-                              className="avatar-sm"
-                              style={{ backgroundColor: deptColor.bar }}
-                            >
-                              {getInitials(emp.employeeName)}
-                            </span>
+                          <button className="name-btn" onClick={() => setViewEmp(emp)}>
+                            <span className="avatar" style={{ backgroundColor: c.bar }}>{getInitials(emp.employeeName)}</span>
                             <div>
-                              <div className="emp-name-cell">
-                                {emp.employeeName}
-                              </div>
-                              <div className="emp-sub-role">
-                                {emp.designation}
-                              </div>
+                              <div className="emp-nm">{emp.employeeName}</div>
+                              <div className="emp-role">{emp.designation}</div>
                             </div>
                           </button>
                         </td>
-                        <td>
-                          <span
-                            className="dept-badge"
-                            style={{
-                              backgroundColor: deptColor.bg,
-                              color: deptColor.text,
-                            }}
-                          >
-                            {emp.department}
-                          </span>
-                        </td>
-                        <td className="salary-cell">
-                          {formatSalary(emp.salary)}
-                        </td>
+                        <td><span className="dept-badge" style={{ backgroundColor: c.bg, color: c.text }}>{emp.department}</span></td>
+                        <td className="salary">{fmtSalary(emp.salary)}</td>
                       </tr>
                     );
                   })}
@@ -389,31 +214,14 @@ const DashboardPage = ({
         </section>
       </div>
 
-      <EmployeeDetailModal
-        employee={viewingEmployee}
-        onClose={() => setViewingEmployee(null)}
-        onEdit={(emp) => {
-          setEditError("");
-          setEditingEmployee(emp);
-        }}
-        onDelete={(emp) => setDeletingEmployee(emp)}
-      />
+      <EmployeeDetailModal employee={viewEmp} onClose={() => setViewEmp(null)}
+        onEdit={(e) => { setEditErr(""); setEditEmp(e); }} onDelete={(e) => setDelEmp(e)} />
 
-      <EditEmployeeModal
-        employee={editingEmployee}
-        onClose={() => !isSavingEdit && setEditingEmployee(null)}
-        onSave={handleSaveEdit}
-        isSaving={isSavingEdit}
-        errorMessage={editError}
-        onClearError={() => setEditError("")}
-      />
+      <EditEmployeeModal employee={editEmp} onClose={() => !isSaving && setEditEmp(null)}
+        onSave={handleSaveEdit} isSaving={isSaving} errorMessage={editErr} onClearError={() => setEditErr("")} />
 
-      <DeleteConfirmModal
-        employee={deletingEmployee}
-        onCancel={() => !isDeleting && setDeletingEmployee(null)}
-        onConfirm={handleConfirmDelete}
-        isDeleting={isDeleting}
-      />
+      <DeleteConfirmModal employee={delEmp} onCancel={() => !isDeleting && setDelEmp(null)}
+        onConfirm={handleConfirmDel} isDeleting={isDeleting} />
     </div>
   );
 };

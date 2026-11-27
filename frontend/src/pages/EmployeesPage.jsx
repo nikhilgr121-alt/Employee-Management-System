@@ -1,422 +1,407 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { DEPARTMENTS, exportEmployeesToCSV } from "../assets/constants";
-import DeleteConfirmModal from "../components/DeleteConfirmModal";
-import EditEmployeeModal from "../components/EditEmployeeModal";
-import EmployeeDetailModal from "../components/EmployeeDetailModal";
-import EmployeeTable from "../components/EmployeeTable";
+import { useEffect, useMemo, useState } from "react";
+import { DEPARTMENTS, getDeptColor, fmtSalary, getInitials, exportCSV } from "../utils/helpers";
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  DeleteIcon,
-  DownloadIcon,
-  FilterResetIcon,
-  SearchIcon,
-  UserPlusIcon,
+  SearchIcon, DownloadIcon, AddUserIcon, TrashIcon,
+  EyeIcon, EditIcon, ChevLeft, ChevRight,
 } from "../components/Icons";
+import EmployeeDetailModal from "../components/EmployeeDetailModal";
+import EditEmployeeModal from "../components/EditEmployeeModal";
+import DeleteConfirmModal from "../components/DeleteConfirmModal";
 
 const EmployeesPage = ({
-  employees,
-  isLoading,
-  onNavigate,
-  onUpdateEmployee,
-  onDeleteEmployee,
-  onBulkDeleteEmployees,
-  initialSearch = "",
-  initialDepartment = "All",
+  employees, isLoading, onNavigate,
+  onUpdate, onDelete, onBulkDelete,
+  initSearch = "", initDept = "All",
 }) => {
-  const [searchQuery, setSearchQuery] = useState(initialSearch);
-  const [selectedDepartment, setSelectedDepartment] =
-    useState(initialDepartment);
+  const [search, setSearch]       = useState(initSearch);
+  const [dept, setDept]           = useState(initDept);
   const [sortField, setSortField] = useState("createdAt");
-  const [sortOrder, setSortOrder] = useState("desc");
+  const [sortDir, setSortDir]     = useState("desc");
+  const [page, setPage]           = useState(1);
+  const [pageSize, setPageSize]   = useState(10);
+  const [selected, setSelected]   = useState([]);
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [selectedIds, setSelectedIds] = useState([]);
+  const [viewEmp, setViewEmp]   = useState(null);
+  const [editEmp, setEditEmp]   = useState(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editErr, setEditErr]   = useState("");
+  const [delEmp, setDelEmp]     = useState(null);
+  const [bulkPending, setBulkPending] = useState(false);
+  const [isDeleting, setIsDeleting]   = useState(false);
 
-  const [viewingEmployee, setViewingEmployee] = useState(null);
-  const [editingEmployee, setEditingEmployee] = useState(null);
-  const [isSavingEdit, setIsSavingEdit] = useState(false);
-  const [editModalError, setEditModalError] = useState("");
+  useEffect(() => { setSearch(initSearch); }, [initSearch]);
+  useEffect(() => { setDept(initDept); }, [initDept]);
 
-  const [deletingEmployee, setDeletingEmployee] = useState(null);
-  const [bulkDeletePending, setBulkDeletePending] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-
-  useEffect(() => {
-    setSearchQuery(initialSearch);
-  }, [initialSearch]);
-
-  useEffect(() => {
-    setSelectedDepartment(initialDepartment);
-  }, [initialDepartment]);
-
-  const departmentOptions = useMemo(() => {
-    const set = new Set(DEPARTMENTS);
-    employees.forEach((emp) => {
-      if (emp.department) set.add(emp.department);
-    });
-    return ["All", ...Array.from(set)];
+  /* ── Department options ── */
+  const deptOptions = useMemo(() => {
+    const s = new Set(DEPARTMENTS);
+    employees.forEach((e) => e.department && s.add(e.department));
+    return ["All", ...s];
   }, [employees]);
 
-  // Filter & sort employees cleanly
-  const processedEmployees = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-
-    const filtered = employees.filter((emp) => {
-      const matchesDept =
-        selectedDepartment === "All" || emp.department === selectedDepartment;
-      if (!matchesDept) return false;
-      if (!query) return true;
-
+  /* ── Filter + sort ── */
+  const processed = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = employees.filter((e) => {
+      if (dept !== "All" && e.department !== dept) return false;
+      if (!q) return true;
       return (
-        emp.employeeId.toLowerCase().includes(query) ||
-        emp.employeeName.toLowerCase().includes(query)
+        e.employeeId.toLowerCase().includes(q) ||
+        e.employeeName.toLowerCase().includes(q)
       );
     });
-
-    const sorted = [...filtered].sort((a, b) => {
-      let comparison = 0;
-      if (sortField === "salary") {
-        comparison = (Number(a.salary) || 0) - (Number(b.salary) || 0);
-      } else if (sortField === "createdAt") {
-        comparison =
-          new Date(a.createdAt || 0).getTime() -
-          new Date(b.createdAt || 0).getTime();
-      } else {
-        comparison = String(a[sortField] || "").localeCompare(
-          String(b[sortField] || ""),
-          undefined,
-          { numeric: true, sensitivity: "base" }
+    return [...filtered].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === "salary")
+        cmp = (Number(a.salary) || 0) - (Number(b.salary) || 0);
+      else if (sortField === "createdAt")
+        cmp = new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+      else
+        cmp = String(a[sortField] || "").localeCompare(
+          String(b[sortField] || ""), undefined, { numeric: true, sensitivity: "base" }
         );
-      }
-      return sortOrder === "asc" ? comparison : -comparison;
+      return sortDir === "asc" ? cmp : -cmp;
     });
+  }, [employees, search, dept, sortField, sortDir]);
 
-    return sorted;
-  }, [employees, searchQuery, selectedDepartment, sortField, sortOrder]);
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(processedEmployees.length / pageSize)
+  /* ── Pagination ── */
+  const totalPages = Math.max(1, Math.ceil(processed.length / pageSize));
+  const safePage   = Math.min(page, totalPages);
+  const paginated  = useMemo(
+    () => processed.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [processed, safePage, pageSize]
   );
-  const safePage = Math.min(currentPage, totalPages);
 
-  const paginatedEmployees = useMemo(() => {
-    const start = (safePage - 1) * pageSize;
-    return processedEmployees.slice(start, start + pageSize);
-  }, [processedEmployees, safePage, pageSize]);
+  useEffect(() => { setPage(1); }, [search, dept, pageSize, sortField, sortDir]);
 
+  /* Keep selection in sync when employees change */
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, selectedDepartment, pageSize, sortField, sortOrder]);
-
-  // Keep selectedIds synced with existing records
-  useEffect(() => {
-    const existingSet = new Set(employees.map((e) => e._id));
-    setSelectedIds((prev) => prev.filter((id) => existingSet.has(id)));
+    const ids = new Set(employees.map((e) => e._id));
+    setSelected((p) => p.filter((id) => ids.has(id)));
   }, [employees]);
 
-  const handleSortColumn = (field) => {
-    if (sortField === field) {
-      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
-    } else {
-      setSortField(field);
-      setSortOrder(field === "salary" ? "desc" : "asc");
-    }
+  /* ── Sort helpers ── */
+  const handleSort = (f) => {
+    if (sortField === f) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortField(f); setSortDir(f === "salary" ? "desc" : "asc"); }
   };
+  const arrow = (f) =>
+    sortField !== f
+      ? <span className="sort-arrow">↕</span>
+      : <span className="sort-arrow active">{sortDir === "asc" ? "↑" : "↓"}</span>;
 
-  const handleSortSelect = (e) => {
-    const [field, order] = e.target.value.split(":");
-    setSortField(field);
-    setSortOrder(order);
-  };
-
-  const handleResetFilters = () => {
-    setSearchQuery("");
-    setSelectedDepartment("All");
-    setSortField("createdAt");
-    setSortOrder("desc");
-  };
-
-  const handleToggleSelect = (id) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+  /* ── Selection helpers ── */
+  const toggleOne = (id) =>
+    setSelected((p) =>
+      p.includes(id) ? p.filter((x) => x !== id) : [...p, id]
     );
+  const togglePage = () => {
+    const ids = paginated.map((e) => e._id);
+    const allSel = ids.every((id) => selected.includes(id));
+    if (allSel) setSelected((p) => p.filter((id) => !ids.includes(id)));
+    else setSelected((p) => Array.from(new Set([...p, ...ids])));
   };
 
-  const handleToggleSelectAll = (pageRows) => {
-    const pageIds = pageRows.map((emp) => emp._id);
-    const allSelected = pageIds.every((id) => selectedIds.includes(id));
-
-    if (allSelected) {
-      setSelectedIds((prev) => prev.filter((id) => !pageIds.includes(id)));
-    } else {
-      setSelectedIds((prev) => Array.from(new Set([...prev, ...pageIds])));
-    }
-  };
-
-  const handleOpenEdit = (employee) => {
-    setEditModalError("");
-    setEditingEmployee(employee);
-  };
-
+  /* ── CRUD handlers ── */
   const handleSaveEdit = async (id, payload) => {
-    setIsSavingEdit(true);
-    setEditModalError("");
-    const result = await onUpdateEmployee(id, payload);
-    setIsSavingEdit(false);
-
-    if (result.success) {
-      setEditingEmployee(null);
-      return true;
-    }
-
-    setEditModalError(result.error);
+    setIsSaving(true);
+    setEditErr("");
+    const r = await onUpdate(id, payload);
+    setIsSaving(false);
+    if (r.success) { setEditEmp(null); return true; }
+    setEditErr(r.error);
     return false;
   };
 
-  const handleConfirmDelete = async (id) => {
+  const handleConfirmDel = async (id) => {
     setIsDeleting(true);
-    if (bulkDeletePending) {
-      const result = await onBulkDeleteEmployees(selectedIds);
+    if (bulkPending) {
+      const r = await onBulkDelete(selected);
       setIsDeleting(false);
-      if (result.success) {
-        setSelectedIds([]);
-        setBulkDeletePending(false);
-      }
+      if (r.success) { setSelected([]); setBulkPending(false); }
       return;
     }
-
-    const result = await onDeleteEmployee(id);
+    const r = await onDelete(id);
     setIsDeleting(false);
-    if (result.success) {
-      setDeletingEmployee(null);
-    }
+    if (r.success) setDelEmp(null);
   };
 
-  const hasActiveFilters =
-    searchQuery.trim() !== "" ||
-    selectedDepartment !== "All" ||
-    sortField !== "createdAt" ||
-    sortOrder !== "desc";
-
+  /* ══════════════════════════════════════════════════════════════ */
   return (
     <div>
       <section className="card">
+
+        {/* ── Header ── */}
         <div className="card-header">
           <div>
-            <h2 className="card-title">Employee Directory</h2>
-            <p className="card-subtitle">
-              Showing {processedEmployees.length} of {employees.length} total
-              employee records
-            </p>
+            <div className="card-title">Employee Directory</div>
+            <div className="card-sub">
+              Showing {processed.length} of {employees.length} records
+            </div>
           </div>
-          <div className="header-btn-group">
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
-              type="button"
               className="btn btn-secondary"
-              onClick={() => exportEmployeesToCSV(processedEmployees)}
-              disabled={processedEmployees.length === 0}
-              title="Download filtered employees as CSV"
+              onClick={() => exportCSV(processed)}
+              disabled={!processed.length}
             >
               <DownloadIcon />
-              <span>Export CSV</span>
+              <span className="btn-txt">Export CSV</span>
             </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => onNavigate("add-employee")}
-            >
-              <UserPlusIcon />
-              <span>Add Employee</span>
+            <button className="btn btn-primary" onClick={() => onNavigate("add")}>
+              <AddUserIcon />
+              <span className="btn-txt">Add Employee</span>
             </button>
           </div>
         </div>
 
+        {/* ── Toolbar ── */}
         <div className="toolbar">
-          <div className="search-box">
-            <span className="search-icon">
-              <SearchIcon />
-            </span>
+          <div className="tb-search">
+            <span className="tb-si"><SearchIcon /></span>
             <input
-              type="text"
-              className="search-input"
-              placeholder="Search by Employee ID or Employee Name..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              aria-label="Search employees by ID or name"
+              placeholder="Search by ID or name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
             />
           </div>
 
-          <div className="toolbar-controls">
-            <div className="filter-group">
-              <label htmlFor="dept-filter" className="filter-label">
-                Department:
-              </label>
-              <select
-                id="dept-filter"
-                className="filter-select"
-                value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-              >
-                {departmentOptions.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept === "All" ? "All Departments" : dept}
+          <div className="tb-controls">
+            <div className="fg">
+              <label>Dept:</label>
+              <select value={dept} onChange={(e) => setDept(e.target.value)}>
+                {deptOptions.map((d) => (
+                  <option key={d} value={d}>
+                    {d === "All" ? "All Departments" : d}
                   </option>
                 ))}
               </select>
             </div>
 
-            <div className="filter-group">
-              <label htmlFor="sort-select" className="filter-label">
-                Sort:
-              </label>
+            <div className="fg">
+              <label>Sort:</label>
               <select
-                id="sort-select"
-                className="filter-select"
-                value={`${sortField}:${sortOrder}`}
-                onChange={handleSortSelect}
+                value={`${sortField}:${sortDir}`}
+                onChange={(e) => {
+                  const [f, d] = e.target.value.split(":");
+                  setSortField(f);
+                  setSortDir(d);
+                }}
               >
                 <option value="createdAt:desc">Newest First</option>
                 <option value="createdAt:asc">Oldest First</option>
-                <option value="employeeName:asc">Name (A → Z)</option>
-                <option value="employeeName:desc">Name (Z → A)</option>
-                <option value="salary:desc">Salary (High → Low)</option>
-                <option value="salary:asc">Salary (Low → High)</option>
-                <option value="employeeId:asc">Employee ID (Asc)</option>
+                <option value="employeeName:asc">Name A→Z</option>
+                <option value="employeeName:desc">Name Z→A</option>
+                <option value="salary:desc">Salary High→Low</option>
+                <option value="salary:asc">Salary Low→High</option>
               </select>
             </div>
 
-            {hasActiveFilters && (
+            {(search || dept !== "All") && (
               <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={handleResetFilters}
-                title="Reset all filters"
+                className="btn btn-sm btn-secondary"
+                onClick={() => { setSearch(""); setDept("All"); }}
               >
-                <FilterResetIcon />
-                <span>Reset</span>
+                Reset
               </button>
             )}
           </div>
         </div>
 
-        {selectedIds.length > 0 && (
-          <div className="bulk-action-bar">
-            <span>
-              <strong>{selectedIds.length}</strong> employee{" "}
-              {selectedIds.length === 1 ? "record" : "records"} selected
-            </span>
-            <div className="header-btn-group">
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setSelectedIds([])}
-              >
-                Clear Selection
+        {/* ── Bulk action bar ── */}
+        {selected.length > 0 && (
+          <div className="bulk-bar">
+            <span><strong>{selected.length}</strong> employee(s) selected</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn btn-sm btn-secondary" onClick={() => setSelected([])}>
+                Clear
               </button>
               <button
-                type="button"
-                className="btn btn-danger btn-sm"
-                onClick={() => setBulkDeletePending(true)}
+                className="btn btn-sm btn-danger"
+                onClick={() => setBulkPending(true)}
               >
-                <DeleteIcon />
-                <span>Delete Selected</span>
+                <TrashIcon /> Delete Selected
               </button>
             </div>
           </div>
         )}
 
+        {/* ── Table ── */}
         {isLoading ? (
           <div className="loading-state">Loading employee records...</div>
+        ) : processed.length === 0 ? (
+          <div className="empty-state">
+            <h4>No Records Found</h4>
+            <p>Try adjusting your search or department filter.</p>
+          </div>
         ) : (
           <>
-            <EmployeeTable
-              employees={paginatedEmployees}
-              selectedIds={selectedIds}
-              onToggleSelect={handleToggleSelect}
-              onToggleSelectAll={handleToggleSelectAll}
-              onView={(emp) => setViewingEmployee(emp)}
-              onEdit={handleOpenEdit}
-              onDelete={(emp) => setDeletingEmployee(emp)}
-              sortField={sortField}
-              sortOrder={sortOrder}
-              onSortColumn={handleSortColumn}
-            />
+            <div className="emp-table-wrap">
+              <table className="emp-table">
+                <thead>
+                  <tr>
+                    <th className="no-sort" style={{ width: 42, textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={
+                          paginated.length > 0 &&
+                          paginated.every((e) => selected.includes(e._id))
+                        }
+                        onChange={togglePage}
+                      />
+                    </th>
+                    <th onClick={() => handleSort("employeeId")}>
+                      Employee ID {arrow("employeeId")}
+                    </th>
+                    <th onClick={() => handleSort("employeeName")}>
+                      Name {arrow("employeeName")}
+                    </th>
+                    <th onClick={() => handleSort("department")}>
+                      Department {arrow("department")}
+                    </th>
+                    <th onClick={() => handleSort("salary")}>
+                      Salary {arrow("salary")}
+                    </th>
+                    <th className="no-sort">Designation</th>
+                    <th className="no-sort">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paginated.map((emp) => {
+                    const c = getDeptColor(emp.department);
+                    const isSel = selected.includes(emp._id);
+                    return (
+                      <tr key={emp._id} className={isSel ? "selected" : ""}>
+                        <td style={{ textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={isSel}
+                            onChange={() => toggleOne(emp._id)}
+                          />
+                        </td>
+                        <td>
+                          <span className="id-pill">{emp.employeeId}</span>
+                        </td>
+                        <td>
+                          <button className="name-btn" onClick={() => setViewEmp(emp)}>
+                            <span
+                              className="avatar"
+                              style={{ backgroundColor: c.bar }}
+                            >
+                              {getInitials(emp.employeeName)}
+                            </span>
+                            <div>
+                              <div className="emp-nm">{emp.employeeName}</div>
+                              <div className="emp-role">{emp.designation}</div>
+                            </div>
+                          </button>
+                        </td>
+                        <td>
+                          <span
+                            className="dept-badge"
+                            style={{ backgroundColor: c.bg, color: c.text }}
+                          >
+                            {emp.department}
+                          </span>
+                        </td>
+                        <td className="salary">{fmtSalary(emp.salary)}</td>
+                        <td>{emp.designation}</td>
+                        <td>
+                          <div className="actions">
+                            <button
+                              className="btn btn-sm btn-view"
+                              onClick={() => setViewEmp(emp)}
+                              title="View details"
+                            >
+                              <EyeIcon />
+                            </button>
+                            <button
+                              className="btn btn-sm btn-edit"
+                              onClick={() => { setEditErr(""); setEditEmp(emp); }}
+                              title="Edit employee"
+                            >
+                              <EditIcon />
+                            </button>
+                            <button
+                              className="btn btn-sm btn-del"
+                              onClick={() => setDelEmp(emp)}
+                              title="Delete employee"
+                            >
+                              <TrashIcon />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-            {processedEmployees.length > 0 && (
-              <div className="pagination-bar">
-                <div className="pagination-info">
-                  <span>Rows per page:</span>
-                  <select
-                    className="page-size-select"
-                    value={pageSize}
-                    onChange={(e) => setPageSize(Number(e.target.value))}
-                    aria-label="Rows per page"
-                  >
-                    <option value={5}>5</option>
-                    <option value={10}>10</option>
-                    <option value={20}>20</option>
-                  </select>
-                  <span className="pagination-range">
-                    Page {safePage} of {totalPages}
-                  </span>
-                </div>
-
-                <div className="pagination-buttons">
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={safePage <= 1}
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  >
-                    <ChevronLeftIcon />
-                    <span>Prev</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={safePage >= totalPages}
-                    onClick={() =>
-                      setCurrentPage((p) => Math.min(totalPages, p + 1))
-                    }
-                  >
-                    <span>Next</span>
-                    <ChevronRightIcon />
-                  </button>
-                </div>
+            {/* ── Pagination ── */}
+            <div className="pag-bar">
+              <div className="pag-info">
+                <span>Rows per page:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                >
+                  <option value={5}>5</option>
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                </select>
+                <span>
+                  Page {safePage} of {totalPages}
+                </span>
               </div>
-            )}
+              <div className="pag-btns">
+                <button
+                  className="btn btn-sm btn-secondary"
+                  disabled={safePage <= 1}
+                  onClick={() => setPage((p) => p - 1)}
+                >
+                  <ChevLeft /> Prev
+                </button>
+                <button
+                  className="btn btn-sm btn-secondary"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next <ChevRight />
+                </button>
+              </div>
+            </div>
           </>
         )}
       </section>
 
+      {/* ── Modals ── */}
       <EmployeeDetailModal
-        employee={viewingEmployee}
-        onClose={() => setViewingEmployee(null)}
-        onEdit={handleOpenEdit}
-        onDelete={(emp) => setDeletingEmployee(emp)}
+        employee={viewEmp}
+        onClose={() => setViewEmp(null)}
+        onEdit={(e) => { setEditErr(""); setEditEmp(e); }}
+        onDelete={(e) => setDelEmp(e)}
       />
 
       <EditEmployeeModal
-        employee={editingEmployee}
-        onClose={() => !isSavingEdit && setEditingEmployee(null)}
+        employee={editEmp}
+        onClose={() => !isSaving && setEditEmp(null)}
         onSave={handleSaveEdit}
-        isSaving={isSavingEdit}
-        errorMessage={editModalError}
-        onClearError={() => setEditModalError("")}
+        isSaving={isSaving}
+        errorMessage={editErr}
+        onClearError={() => setEditErr("")}
       />
 
       <DeleteConfirmModal
-        employee={deletingEmployee}
-        bulkCount={bulkDeletePending ? selectedIds.length : 0}
+        employee={delEmp}
+        bulkCount={bulkPending ? selected.length : 0}
         onCancel={() => {
           if (isDeleting) return;
-          setDeletingEmployee(null);
-          setBulkDeletePending(false);
+          setDelEmp(null);
+          setBulkPending(false);
         }}
-        onConfirm={handleConfirmDelete}
+        onConfirm={handleConfirmDel}
         isDeleting={isDeleting}
       />
     </div>

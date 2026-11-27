@@ -1,24 +1,16 @@
 import React from "react";
-import { AlertCircleIcon, CheckCircleIcon, CloseIcon } from "./Icons";
+import { CheckIcon, AlertIcon, CloseIcon } from "./Icons";
 
 const AlertBanner = ({ type = "success", message, onClose }) => {
   if (!message) return null;
-
   return (
-    <div className={`alert-banner alert-${type}`} role="alert">
-      <div className="alert-content">
-        <span className="alert-icon">
-          {type === "success" ? <CheckCircleIcon /> : <AlertCircleIcon />}
-        </span>
+    <div className={`alert alert-${type}`} role="alert">
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {type === "success" ? <CheckIcon /> : <AlertIcon />}
         <span>{message}</span>
       </div>
       {onClose && (
-        <button
-          type="button"
-          className="alert-close"
-          onClick={onClose}
-          aria-label="Dismiss message"
-        >
+        <button className="alert-close" onClick={onClose} aria-label="Dismiss">
           <CloseIcon />
         </button>
       )}

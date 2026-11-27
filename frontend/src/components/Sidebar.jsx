@@ -1,71 +1,44 @@
 import React from "react";
-import {
-  BuildingIcon,
-  CloseIcon,
-  DashboardIcon,
-  UserPlusIcon,
-  UsersIcon,
-} from "./Icons";
+import { BuildingIcon, CloseIcon, DashIcon, UsersIcon, AddUserIcon, ChartIcon } from "./Icons";
 
-const NAV_ITEMS = [
-  { id: "dashboard", label: "Dashboard", icon: <DashboardIcon /> },
-  { id: "employees", label: "Employees", icon: <UsersIcon /> },
-  { id: "add-employee", label: "Add Employee", icon: <UserPlusIcon /> },
+const NAV = [
+  { id: "dashboard",  label: "Dashboard",   icon: <DashIcon /> },
+  { id: "employees",  label: "Employees",   icon: <UsersIcon /> },
+  { id: "analysis",   label: "Analysis",    icon: <ChartIcon /> },
+  { id: "add",        label: "Add Employee",icon: <AddUserIcon /> },
 ];
 
-const Sidebar = ({
-  activePage,
-  onNavigate,
-  isOpen,
-  onClose,
-  employeeCount,
-  dbStatus,
-}) => {
-  const handleSelect = (pageId) => {
-    onNavigate(pageId);
-    onClose();
-  };
-
-  const isConnected = dbStatus?.status === "connected";
+const Sidebar = ({ active, onNav, isOpen, onClose, empCount, dbStatus }) => {
+  const connected = dbStatus?.status === "connected";
 
   return (
     <>
       {isOpen && <div className="sidebar-backdrop" onClick={onClose} />}
-      <aside className={`sidebar ${isOpen ? "sidebar-open" : ""}`}>
+      <aside className={`sidebar ${isOpen ? "open" : ""}`}>
         <div>
-          <div className="sidebar-header">
-            <div className="brand">
-              <div className="brand-logo">
-                <BuildingIcon />
-              </div>
-              <div>
-                <h1 className="brand-title">EMS Admin</h1>
-                <p className="brand-subtitle">Workforce Suite</p>
-              </div>
+          <div className="sidebar-brand">
+            <div className="brand-icon"><BuildingIcon /></div>
+            <div>
+              <div className="brand-name">EMS Admin</div>
+              <div className="brand-sub">Workforce Suite</div>
             </div>
-            <button
-              type="button"
-              className="sidebar-close-btn"
-              onClick={onClose}
-              aria-label="Close navigation menu"
-            >
+            <button className="sidebar-close" onClick={onClose} aria-label="Close menu" style={{ marginLeft: "auto" }}>
               <CloseIcon />
             </button>
           </div>
 
-          <nav className="sidebar-nav" aria-label="Main navigation">
-            <p className="nav-section-label">WORKSPACE</p>
-            {NAV_ITEMS.map((item) => (
+          <nav className="sidebar-nav">
+            <div className="nav-label-sm">MENU</div>
+            {NAV.map((item) => (
               <button
                 key={item.id}
-                type="button"
-                className={`nav-item ${activePage === item.id ? "nav-item-active" : ""}`}
-                onClick={() => handleSelect(item.id)}
+                className={`nav-btn ${active === item.id ? "active" : ""}`}
+                onClick={() => { onNav(item.id); onClose(); }}
               >
-                <span className="nav-icon">{item.icon}</span>
-                <span className="nav-label">{item.label}</span>
+                {item.icon}
+                <span>{item.label}</span>
                 {item.id === "employees" && (
-                  <span className="nav-badge">{employeeCount}</span>
+                  <span className="badge">{empCount}</span>
                 )}
               </button>
             ))}
@@ -73,17 +46,11 @@ const Sidebar = ({
         </div>
 
         <div className="sidebar-footer">
-          <div className="db-status-card">
-            <span
-              className={`status-dot ${isConnected ? "status-online" : "status-offline"}`}
-            />
+          <div className="db-status">
+            <span className={`status-dot ${connected ? "dot-on" : "dot-off"}`} />
             <div>
-              <p className="db-status-title">
-                {isConnected ? "MongoDB Connected" : "Database Offline"}
-              </p>
-              <p className="db-status-sub">
-                {dbStatus?.name || "employee_management"}
-              </p>
+              <div className="db-name">{connected ? "MongoDB Connected" : "DB Offline"}</div>
+              <div className="db-sub">{dbStatus?.name || "employee_management"}</div>
             </div>
           </div>
         </div>

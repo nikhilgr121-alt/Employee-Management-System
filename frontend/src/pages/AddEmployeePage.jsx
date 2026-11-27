@@ -1,96 +1,66 @@
 import React, { useState } from "react";
-import {
-  formatSalary,
-  generateNextEmployeeId,
-  getDepartmentColor,
-  getInitials,
-} from "../assets/constants";
+import { getDeptColor, fmtSalary, getInitials, nextEmpId } from "../utils/helpers";
 import EmployeeForm from "../components/EmployeeForm";
 
-const AddEmployeePage = ({ employees, onCreateEmployee, onNavigate }) => {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [preview, setPreview] = useState({
-    employeeId: "",
-    employeeName: "",
-    department: "",
-    salary: "",
-    designation: "",
-  });
+const AddEmployeePage = ({ employees, onCreate, onNavigate }) => {
+  const [submitting, setSubmitting] = useState(false);
+  const [preview, setPreview] = useState({ employeeId: "", employeeName: "", department: "", salary: "", designation: "" });
 
   const handleSubmit = async (payload) => {
-    setIsSubmitting(true);
-    const result = await onCreateEmployee(payload);
-    setIsSubmitting(false);
-    return result.success;
+    setSubmitting(true);
+    const r = await onCreate(payload);
+    setSubmitting(false);
+    return r.success;
   };
 
-  const deptColor = getDepartmentColor(preview.department);
-  const numericSalary = Number(preview.salary);
+  const c = getDeptColor(preview.department);
+  const sal = Number(preview.salary);
 
   return (
-    <div className="add-page-grid">
+    <div className="add-grid">
       <section className="card">
         <div className="card-header">
           <div>
-            <h2 className="card-title">Employee Registration Form</h2>
-            <p className="card-subtitle">
-              Fill in all mandatory fields or click Auto ID to generate the next ID
-            </p>
+            <div className="card-title">Employee Registration Form</div>
+            <div className="card-sub">Fill all fields · Use Auto ID for next sequential ID</div>
           </div>
         </div>
         <div className="card-body">
           <EmployeeForm
             onSubmit={handleSubmit}
             onCancel={() => onNavigate("employees")}
-            onAutoGenerateId={() => generateNextEmployeeId(employees)}
+            onAutoId={() => nextEmpId(employees)}
             onValuesChange={setPreview}
-            submitLabel="Submit"
-            isSubmitting={isSubmitting}
-            resetOnSuccess={true}
+            submitLabel="Add Employee"
+            isSubmitting={submitting}
+            resetOnSuccess
           />
         </div>
       </section>
 
-      <aside className="add-side-stack">
-        {/* Live Employee Card Preview */}
+      <div className="add-side">
+        {/* Live Preview */}
         <section className="card">
           <div className="card-header">
             <div>
-              <h2 className="card-title">Live ID Badge Preview</h2>
-              <p className="card-subtitle">Updates as you type</p>
+              <div className="card-title">Live ID Badge Preview</div>
+              <div className="card-sub">Updates as you type</div>
             </div>
           </div>
           <div className="card-body">
-            <div className="id-preview-card">
-              <div
-                className="profile-avatar-lg"
-                style={{ backgroundColor: deptColor.bar }}
-              >
+            <div className="badge-preview">
+              <div className="avatar-lg" style={{ backgroundColor: c.bar }}>
                 {getInitials(preview.employeeName || "New Employee")}
               </div>
-              <div className="id-preview-info">
-                <span className="emp-id-pill">
-                  {preview.employeeId.trim() || "EMPXXX"}
-                </span>
-                <h3 className="id-preview-name">
-                  {preview.employeeName.trim() || "Employee Name"}
-                </h3>
-                <p className="id-preview-role">
-                  {preview.designation.trim() || "Designation"}
-                </p>
-                <div className="id-preview-footer">
-                  <span
-                    className="dept-badge"
-                    style={{
-                      backgroundColor: deptColor.bg,
-                      color: deptColor.text,
-                    }}
-                  >
+              <div className="preview-info">
+                <span className="id-pill preview-id">{preview.employeeId || "EMPXXX"}</span>
+                <div className="preview-name">{preview.employeeName || "Employee Name"}</div>
+                <div className="preview-role">{preview.designation || "Designation"}</div>
+                <div className="preview-foot">
+                  <span className="dept-badge" style={{ backgroundColor: c.bg, color: c.text }}>
                     {preview.department || "Department"}
                   </span>
-                  <span className="salary-cell">
-                    {numericSalary > 0 ? formatSalary(numericSalary) : "$0"}
-                  </span>
+                  <span className="salary">{sal > 0 ? fmtSalary(sal) : "$0"}</span>
                 </div>
               </div>
             </div>
@@ -100,45 +70,18 @@ const AddEmployeePage = ({ employees, onCreateEmployee, onNavigate }) => {
         {/* Guidelines */}
         <section className="card">
           <div className="card-header">
-            <div>
-              <h2 className="card-title">Registration Guidelines</h2>
-              <p className="card-subtitle">Validation rules enforced</p>
-            </div>
+            <div className="card-title">Guidelines</div>
           </div>
           <div className="card-body">
-            <ul className="guidelines-list">
-              <li>
-                <span className="guideline-bullet" />
-                <span>
-                  All five fields (Employee ID, Employee Name, Department,
-                  Salary, and Designation) are mandatory.
-                </span>
-              </li>
-              <li>
-                <span className="guideline-bullet" />
-                <span>
-                  <strong>Employee ID</strong> must be unique across all records
-                  (use <strong>Auto ID</strong> for the next sequential ID).
-                </span>
-              </li>
-              <li>
-                <span className="guideline-bullet" />
-                <span>
-                  <strong>Salary</strong> accepts only valid positive numbers
-                  greater than 0.
-                </span>
-              </li>
-              <li>
-                <span className="guideline-bullet" />
-                <span>
-                  Records are saved permanently to the{" "}
-                  <code>employee_management</code> MongoDB database.
-                </span>
-              </li>
+            <ul className="guide-list">
+              <li><span className="guide-dot" /><span>All 5 fields are mandatory.</span></li>
+              <li><span className="guide-dot" /><span><strong>Employee ID</strong> must be unique. Use <strong>Auto ID</strong> to generate the next one.</span></li>
+              <li><span className="guide-dot" /><span><strong>Salary</strong> must be a positive number greater than 0.</span></li>
+              <li><span className="guide-dot" /><span>Records are saved permanently to MongoDB.</span></li>
             </ul>
           </div>
         </section>
-      </aside>
+      </div>
     </div>
   );
 };
